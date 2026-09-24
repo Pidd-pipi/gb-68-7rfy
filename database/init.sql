@@ -43,6 +43,15 @@ CREATE TABLE IF NOT EXISTS sensor_data (
 CREATE INDEX IF NOT EXISTS idx_sensor_data_device_time ON sensor_data(device_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_sensor_data_time ON sensor_data(timestamp);
 
+-- 雨量增量列：每条雨量读数相对上一条的增量（毫米）。
+-- 读数回落（雨量计重置）时按新值计；重复上报同一累计值时为 0；非雨量数据为 NULL。
+ALTER TABLE sensor_data ADD COLUMN IF NOT EXISTS rain_increment DECIMAL(10, 2);
+
+-- 按设备统计近期降雨量（增量求和）
+CREATE INDEX IF NOT EXISTS idx_sensor_data_rainfall
+    ON sensor_data(device_id, timestamp)
+    WHERE data_type = 'rainfall';
+
 -- 灌溉计划类型枚举
 CREATE TYPE schedule_type AS ENUM ('timed', 'conditional');
 CREATE TYPE schedule_status AS ENUM ('active', 'inactive');

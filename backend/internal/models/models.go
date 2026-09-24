@@ -48,14 +48,21 @@ type Device struct {
 	DeletedAt     gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
+// DataTypeRainfall 雨量传感器上报的累计降雨量（毫米）
+const DataTypeRainfall = "rainfall"
+
 type SensorData struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	DeviceID  uint      `json:"device_id" gorm:"not null"`
 	DataType  string    `json:"data_type" gorm:"size:50;not null"`
 	Value     float64   `json:"value" gorm:"type:decimal(10,2);not null"`
-	Unit      string    `json:"unit" gorm:"size:20"`
-	Timestamp time.Time `json:"timestamp" gorm:"not null"`
-	CreatedAt time.Time `json:"created_at"`
+	// RainIncrement 雨量读数相对上一条的增量（毫米）。
+	// 仅对 data_type = rainfall 的记录有值；读数回落（雨量计重置）时按新值计，
+	// 重复上报同一累计值时为 0。其他数据类型为 NULL，不参与降雨量求和。
+	RainIncrement *float64  `json:"rain_increment,omitempty" gorm:"type:decimal(10,2)"`
+	Unit          string    `json:"unit" gorm:"size:20"`
+	Timestamp     time.Time `json:"timestamp" gorm:"not null"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type ScheduleType string

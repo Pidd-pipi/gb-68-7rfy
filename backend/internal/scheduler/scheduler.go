@@ -116,12 +116,16 @@ func shouldExecuteConditionalSchedule(schedule models.IrrigationSchedule) bool {
 	return *avgHumidity < *schedule.HumidityThreshold
 }
 
+// RainfallAvoidThreshold 最近两小时累计降雨量超过该值（毫米）时跳过灌溉，
+// 定时灌溉与条件灌溉共用该避雨门槛。
+const RainfallAvoidThreshold = 5.0
+
 func (s *IrrigationScheduler) executeIrrigation(schedule models.IrrigationSchedule) {
 	logger.Info("Executing irrigation schedule", zap.Uint("schedule_id", schedule.ID))
 
 	if schedule.RainSensorID != nil {
 		rainfall, err := s.sensorService.CheckRecentRainfall(*schedule.RainSensorID, 2*time.Hour)
-		if err == nil && rainfall > 5.0 {
+		if err == nil && rainfall > RainfallAvoidThreshold {
 			logger.Info("Skipping irrigation due to recent rainfall", zap.Float64("rainfall", rainfall))
 			return
 		}

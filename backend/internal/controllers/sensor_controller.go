@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"strconv"
 	"time"
 
@@ -38,7 +39,7 @@ func (c *SensorController) Create(ctx *gin.Context) {
 	}
 
 	if err := c.sensorService.CreateSensorData(&data); err != nil {
-		response.InternalServerError(ctx, err.Error())
+		respondSensorError(ctx, err)
 		return
 	}
 
@@ -62,11 +63,23 @@ func (c *SensorController) BatchCreate(ctx *gin.Context) {
 	}
 
 	if err := c.sensorService.BatchCreateSensorData(dataList); err != nil {
-		response.InternalServerError(ctx, err.Error())
+		respondSensorError(ctx, err)
 		return
 	}
 
 	response.Success(ctx, nil)
+}
+
+// respondSensorError 将雨量录入的业务校验错误映射为对应的 HTTP 状态码
+func respondSensorError(ctx *gin.Context, err error) {
+	switch {
+	case errors.Is(err, services.ErrRainDeviceNotFound):
+		response.NotFound(ctx, err.Error())
+	case errors.Is(err, services.ErrRainTimestampStale), errors.Is(err, services.ErrRainValueNegative):
+		response.BadRequest(ctx, err.Error())
+	default:
+		response.InternalServerError(ctx, err.Error())
+	}
 }
 
 // GetSensorHistory godoc
@@ -127,4 +140,39 @@ func (c *SensorController) GetLatest(ctx *gin.Context) {
 	}
 
 	response.Success(ctx, data)
+}
+
+// GetRecentRainfall godoc
+// @Summary 查询设备最近降雨量
+// @Description 按设备查看最近一段时间（默认最近两小时）内的降雨量，雨量按每条记录相对上一条的增量求和
+// @Tags 传感器数据
+// @Security ApiKeyAuth
+// @Produce json
+// @Param device_id path int true "设备ID"
+// @Param hours query number false "统计时长（小时，默认 2）" default(2)
+// @Success 200 {object} services.RainfallSummary
+// @Router /api/sensors/rainfall/{device_id} [get]
+func (c *SensorController) GetRecentRainfall(ctx *gin.Context) {
+	deviceID, err := strconv.ParseUint(ctx.Param("device_id"), 10, 32)
+	if err != nil || deviceID == 0 {
+		response.BadRequest(ctx, "Invalid device_id")
+		return
+	}
+
+	hours := 2.0
+	if hoursStr := ctx.Query("hours"); hoursStr != "" {
+		hours, err = strconv.ParseFloat(hoursStr, 64)
+		if err != nil || hours <= 0 {
+			response.BadRequest(ctx, "Invalid hours")
+			return
+		}
+	}
+
+	summary, err := c.sensorService.GetRecentRainfall(uint(deviceID), hours)
+	if err != nil {
+		respondSensorError(ctx, err)
+		return
+	}
+
+	response.Success(ctx, summary)
 }

@@ -63,6 +63,7 @@ func SetupRoutes(r *gin.Engine) {
 			{
 				protectedSensors.GET("/history/:device_id", sensorController.GetHistory)
 				protectedSensors.GET("/latest/:device_id", sensorController.GetLatest)
+				protectedSensors.GET("/rainfall/:device_id", sensorController.GetRecentRainfall)
 			}
 		}
 
