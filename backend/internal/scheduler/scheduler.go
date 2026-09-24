@@ -11,20 +11,20 @@ import (
 )
 
 type IrrigationScheduler struct {
-	scheduleService  *services.ScheduleService
+	scheduleService   *services.ScheduleService
 	irrigationService *services.IrrigationService
-	sensorService   *services.SensorService
-	deviceService  *services.DeviceService
-	alertService   *services.AlertService
+	sensorService     *services.SensorService
+	deviceService     *services.DeviceService
+	alertService      *services.AlertService
 }
 
 func NewIrrigationScheduler() *IrrigationScheduler {
 	return &IrrigationScheduler{
-		scheduleService:  services.NewScheduleService(),
+		scheduleService:   services.NewScheduleService(),
 		irrigationService: services.NewIrrigationService(),
-		sensorService:   services.NewSensorService(),
-		deviceService:  services.NewDeviceService(),
-		alertService:   services.NewAlertService(),
+		sensorService:     services.NewSensorService(),
+		deviceService:     services.NewDeviceService(),
+		alertService:      services.NewAlertService(),
 	}
 }
 
@@ -120,8 +120,8 @@ func (s *IrrigationScheduler) executeIrrigation(schedule models.IrrigationSchedu
 	logger.Info("Executing irrigation schedule", zap.Uint("schedule_id", schedule.ID))
 
 	if schedule.RainSensorID != nil {
-		rainfall, err := s.sensorService.CheckRecentRainfall(*schedule.RainSensorID, 2*time.Hour)
-		if err == nil && rainfall > 5.0 {
+		rainfall, err := s.sensorService.CheckRecentRainfall(*schedule.RainSensorID, models.RainfallWindow)
+		if err == nil && rainfall > models.RainfallSkipThreshold {
 			logger.Info("Skipping irrigation due to recent rainfall", zap.Float64("rainfall", rainfall))
 			return
 		}

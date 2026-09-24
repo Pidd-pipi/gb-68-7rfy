@@ -42,7 +42,7 @@ func SetupRoutes(r *gin.Engine) {
 		{
 			deviceController := controllers.NewDeviceController()
 			devices.POST("/:serial/heartbeat", deviceController.Heartbeat)
-			
+
 			protectedDevices := devices.Group("", middleware.JWTAuth())
 			{
 				protectedDevices.GET("", deviceController.List)
@@ -63,6 +63,7 @@ func SetupRoutes(r *gin.Engine) {
 			{
 				protectedSensors.GET("/history/:device_id", sensorController.GetHistory)
 				protectedSensors.GET("/latest/:device_id", sensorController.GetLatest)
+				protectedSensors.GET("/rainfall/:device_id/last-2h", sensorController.GetRainfallLast2Hours)
 			}
 		}
 

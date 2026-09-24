@@ -28,20 +28,28 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 -- 传感器数据表（时序表）
+-- value 为传感器原始读数；雨量传感器上报的是累计毫米数，
+-- rainfall_increment 保存相对上一条读数的增量，降雨统计只对增量求和，
+-- 避免重复上报同一累计值被误算（读数回落按雨量计重置处理）。
 CREATE TABLE IF NOT EXISTS sensor_data (
     id BIGSERIAL,
     device_id INTEGER NOT NULL REFERENCES devices(id),
     data_type VARCHAR(50) NOT NULL,
     value DECIMAL(10, 2) NOT NULL,
+    rainfall_increment DECIMAL(10, 2),
     unit VARCHAR(20),
     timestamp TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id, timestamp)
 );
 
+-- 兼容旧库：增量列不存在时补齐
+ALTER TABLE sensor_data ADD COLUMN IF NOT EXISTS rainfall_increment DECIMAL(10, 2);
+
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_sensor_data_device_time ON sensor_data(device_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_sensor_data_time ON sensor_data(timestamp);
+CREATE INDEX IF NOT EXISTS idx_sensor_data_rainfall_time ON sensor_data(device_id, timestamp) WHERE data_type = 'rainfall';
 
 -- 灌溉计划类型枚举
 CREATE TYPE schedule_type AS ENUM ('timed', 'conditional');

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"strconv"
 	"time"
 
@@ -23,12 +24,14 @@ func NewSensorController() *SensorController {
 
 // CreateSensorData godoc
 // @Summary 上报传感器数据
-// @Description 设备上报传感器数据
+// @Description 设备上报传感器数据。雨量（data_type=rainfall）上报累计毫米数时，系统保存相对上一条的增量：读数回落按雨量计重置处理（采用新值，旧累计不参与求和），同一累计值重复上报记零增量；时间早于上一条或设备不存在时拒绝。
 // @Tags 传感器数据
 // @Accept json
 // @Produce json
 // @Param request body models.SensorData true "传感器数据"
 // @Success 201 {object} models.SensorData
+// @Failure 400 {object} response.Response "读数非法或时间早于上一条"
+// @Failure 404 {object} response.Response "设备不存在"
 // @Router /api/sensors/data [post]
 func (c *SensorController) Create(ctx *gin.Context) {
 	var data models.SensorData
@@ -38,7 +41,7 @@ func (c *SensorController) Create(ctx *gin.Context) {
 	}
 
 	if err := c.sensorService.CreateSensorData(&data); err != nil {
-		response.InternalServerError(ctx, err.Error())
+		c.handleSensorError(ctx, err)
 		return
 	}
 
@@ -47,12 +50,14 @@ func (c *SensorController) Create(ctx *gin.Context) {
 
 // BatchCreateSensorData godoc
 // @Summary 批量上报传感器数据
-// @Description 批量上报传感器数据
+// @Description 批量上报传感器数据，其中雨量累计读数同样按相对上一条的增量保存
 // @Tags 传感器数据
 // @Accept json
 // @Produce json
 // @Param request body []models.SensorData true "传感器数据列表"
 // @Success 200 {object} response.Response
+// @Failure 400 {object} response.Response "读数非法或时间早于上一条"
+// @Failure 404 {object} response.Response "设备不存在"
 // @Router /api/sensors/data/batch [post]
 func (c *SensorController) BatchCreate(ctx *gin.Context) {
 	var dataList []models.SensorData
@@ -62,16 +67,29 @@ func (c *SensorController) BatchCreate(ctx *gin.Context) {
 	}
 
 	if err := c.sensorService.BatchCreateSensorData(dataList); err != nil {
-		response.InternalServerError(ctx, err.Error())
+		c.handleSensorError(ctx, err)
 		return
 	}
 
-	response.Success(ctx, nil)
+	response.Success(ctx, dataList)
+}
+
+func (c *SensorController) handleSensorError(ctx *gin.Context, err error) {
+	switch {
+	case errors.Is(err, services.ErrDeviceNotFound):
+		response.NotFound(ctx, "device not found")
+	case errors.Is(err, services.ErrTimestampOutOfOrder):
+		response.BadRequest(ctx, "timestamp must not be earlier than the latest record")
+	case errors.Is(err, services.ErrNegativeRainfall):
+		response.BadRequest(ctx, "rainfall reading must not be negative")
+	default:
+		response.InternalServerError(ctx, err.Error())
+	}
 }
 
 // GetSensorHistory godoc
 // @Summary 获取传感器历史数据
-// @Description 获取指定设备的传感器历史数据
+// @Description 获取指定设备的传感器历史数据（雨量数据包含每次上报的累计值与增量）
 // @Tags 传感器数据
 // @Security ApiKeyAuth
 // @Produce json
@@ -127,4 +145,40 @@ func (c *SensorController) GetLatest(ctx *gin.Context) {
 	}
 
 	response.Success(ctx, data)
+}
+
+// GetRainfallLast2Hours godoc
+// @Summary 查询设备最近两小时降雨量
+// @Description 按设备返回最近两小时内的降雨量（毫米），按各次上报的增量求和
+// @Tags 传感器数据
+// @Security ApiKeyAuth
+// @Produce json
+// @Param device_id path int true "雨量传感器设备ID"
+// @Success 200 {object} services.RainfallSummary
+// @Failure 404 {object} response.Response "设备不存在"
+// @Router /api/sensors/rainfall/{device_id}/last-2h [get]
+func (c *SensorController) GetRainfallLast2Hours(ctx *gin.Context) {
+	deviceID, _ := strconv.ParseUint(ctx.Param("device_id"), 10, 32)
+	if deviceID == 0 {
+		response.BadRequest(ctx, "invalid device_id")
+		return
+	}
+
+	exists, err := c.sensorService.DeviceExists(uint(deviceID))
+	if err != nil {
+		response.InternalServerError(ctx, err.Error())
+		return
+	}
+	if !exists {
+		response.NotFound(ctx, "device not found")
+		return
+	}
+
+	summary, err := c.sensorService.GetRainfallLast2Hours(uint(deviceID))
+	if err != nil {
+		response.InternalServerError(ctx, err.Error())
+		return
+	}
+
+	response.Success(ctx, summary)
 }
